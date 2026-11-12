@@ -103,9 +103,31 @@ final class Blocklist {
             if (i >= 0 && i < end) end = i;
         }
         s = s.substring(0, end);
+        while (s.endsWith(".")) s = s.substring(0, s.length() - 1);
         if (s.startsWith("www.")) s = s.substring(4);
         if (!s.contains(".") || s.startsWith(".") || s.endsWith(".")) return null;
         return s;
+    }
+
+    /** Words that identify a blocked site from its page title (used when the address bar is hidden). */
+    static final String[] TITLE_WORDS = {
+        "tiktok", "youtube", "instagram", "facebook", "pinterest", "reddit", "snapchat", "twitch",
+        "amazon.", "aliexpress", "shein", "temu", "wallapop", "vinted", "zalando", "ebay",
+        "just eat", "uber eats", "glovo"
+    };
+
+    static boolean isBlockedTitle(CharSequence raw) {
+        String t = raw.toString().toLowerCase(Locale.ROOT);
+        if (t.contains("wikipedia")) return false; // allow reading articles about these companies
+        for (String w : TITLE_WORDS) {
+            int i = t.indexOf(w);
+            if (i < 0) continue;
+            boolean startOk = i == 0 || !Character.isLetterOrDigit(t.charAt(i - 1));
+            int e = i + w.length();
+            boolean endOk = w.endsWith(".") || e >= t.length() || !Character.isLetterOrDigit(t.charAt(e));
+            if (startOk && endOk) return true;
+        }
+        return false;
     }
 
     static boolean matchesStoreName(String text) {

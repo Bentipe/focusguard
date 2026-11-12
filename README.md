@@ -9,8 +9,8 @@ Built for a Pixel 8 on Android 17, plain Java, no dependencies, no network acces
 | Area | How |
 |---|---|
 | **Apps** (~75: TikTok, YouTube, YouTube Music, Google TV, Instagram, Facebook, Snapchat, X, Reddit, Pinterest, Threads, LinkedIn, Discord, Twitch, Temu, Shein, Amazon, AliExpress, Wallapop, Vinted, Zalando, Just Eat, Uber Eats, Glovo, …) | Opening one sends you straight to the home screen. Installing one pops up the uninstall screen for it. |
-| **Websites** (~100 social, video and shopping domains) | Reads the address bar in Chrome and Firefox and backs out of blocked pages. |
-| **Play Store** | Backs out of the store page of a blocked app, so it can't be installed or re-enabled. |
+| **Websites** (~100 social, video and shopping domains) | Reads the address bar in Chrome and Firefox and backs out of blocked pages. When a site hides the address bar (full-screen TikTok/YouTube), it falls back to the page title. |
+| **Play Store** | The store works normally (home, search, **updates**, other apps). Only a blocked app's own details page is closed (one Back press), so it can't be installed or re-enabled. Ads for blocked apps on the home page are left alone. |
 | **Other browsers** | Any app that can open arbitrary web links, other than Chrome and Firefox, is treated as blocked, so installing another browser doesn't get around it. |
 | **Disabled system apps** | Blocks the "Enable" button for YouTube, YouTube Music and Google TV in Settings. |
 | **Itself** | Backs out of its own Uninstall / Force stop / Clear storage / Deactivate admin / accessibility toggle screens. There is no off switch in the app. |
@@ -92,9 +92,24 @@ adb shell pm enable com.google.android.apps.youtube.music
 adb shell pm enable com.google.android.videos
 ```
 
+## Tested on Pixel 8 / Android 17 (2026-11-12)
+
+| Check | Result |
+|---|---|
+| amazon.es, m.youtube.com, instagram.com in Chrome | blocked |
+| tiktok.com, youtube.com, shein.com, zara.com, amazon.es in Firefox | blocked |
+| Wikipedia (incl. the TikTok article), elpais.com, store.steampowered.com | allowed |
+| Play Store home, Strava and Steam store pages | allowed |
+| Play Store pages for TikTok, Temu, YouTube | closed |
+| Focus Guard's App info and accessibility toggle | closed |
+| YouTube App info ("Habilitar") | closed |
+| Accessibility list, Strava App info | allowed |
+| Steam, Strava apps | open normally |
+
 ## Known gaps
 
 - **Safe mode** turns off third-party accessibility services. From there the admin could be deactivated by hand. Only device owner mode closes this.
 - **In-app browsers** (for example links opened inside the Google app or a chat app's built-in viewer) aren't filtered, only Chrome and Firefox are.
+- **Page-title fallback** can block an unrelated page whose title contains e.g. "YouTube" or "Amazon." (Wikipedia is exempt).
 - **Screen-text heuristics**: the Settings and Play Store checks match on-screen words in Spanish and English. A different phone language or a big UI update may need new words in `GuardService.java`.
 - **USB debugging**: anyone with a computer and the phone unlocked can remove it. That's the intended escape hatch.

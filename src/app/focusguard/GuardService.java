@@ -126,18 +126,44 @@ public class GuardService extends AccessibilityService {
 
     private void checkBrowser(List<AccessibilityNodeInfo> nodes) {
         Rect r = new Rect();
+        // Page content lives inside the WebView; only browser chrome (address bar) is outside it.
+        List<Rect> webViews = new ArrayList<>();
+        for (AccessibilityNodeInfo n : nodes) {
+            CharSequence c = n.getClassName();
+            if (c != null && c.toString().endsWith("WebView")) {
+                Rect w = new Rect();
+                n.getBoundsInScreen(w);
+                webViews.add(w);
+            }
+        }
         for (AccessibilityNodeInfo n : nodes) {
             CharSequence text = n.getText();
-            if (text == null) continue;
             String id = n.getViewIdResourceName();
             String idLower = id == null ? "" : id.toLowerCase(Locale.ROOT);
             CharSequence cls = n.getClassName();
+            // Page title fallback: full-screen sites (TikTok, YouTube) hide the address bar.
+            if (text != null && cls != null && cls.toString().endsWith("WebView") && Blocklist.isBlockedTitle(text)) {
+                Log.i(TAG, "blocked page title " + text);
+                kick("Site blocked", true);
+                return;
+            }
+            n.getBoundsInScreen(r);
+            boolean inPage = false;
+            for (Rect w : webViews) if (w.contains(r)) { inPage = true; break; }
+            if (inPage) continue;
             boolean addressLike = idLower.contains("url") || idLower.contains("omnibar")
                 || idLower.contains("location_bar") || idLower.contains("address")
                 || idLower.contains("toolbar") || (cls != null && cls.toString().endsWith("EditText"));
+            if (addressLike && text == null && n.getContentDescription() != null) {
+                // Firefox 159+: the address box has no text; the URL is the first word of its description,
+                // e.g. " zara.com/es. Buscar o escribir dirección".
+                String d = n.getContentDescription().toString().trim();
+                int sp = d.indexOf(' ');
+                text = sp > 0 ? d.substring(0, sp) : d;
+            }
+            if (text == null) continue;
             if (!addressLike) {
-                // Firefox's newer toolbar has no view ids: accept URL-looking text near the top or bottom bar.
-                n.getBoundsInScreen(r);
+                // Toolbars without view ids: accept URL-looking text near the top or bottom bar.
                 boolean inBar = r.top < 350 || r.bottom > 2050;
                 if (!inBar || n.getChildCount() > 0) continue;
             }
@@ -150,23 +176,36 @@ public class GuardService extends AccessibilityService {
         }
     }
 
+    /**
+     * Blocks only a blocked app's own details page (name + install/enable button + a details-only
+     * section). Home, search, Updates and other apps' pages stay usable even when they show ads.
+     */
     private void checkStore(List<AccessibilityNodeInfo> nodes) {
-        boolean name = false, action = false;
+        String name = null;
+        boolean action = false, details = false;
         for (AccessibilityNodeInfo n : nodes) {
             String t = lower(n.getText());
-            String d = lower(n.getContentDescription());
-            if (t != null) {
-                if (Blocklist.matchesStoreName(t)) name = true;
-                if (INSTALL_WORDS.contains(t)) action = true;
-            }
-            if (d != null && Blocklist.matchesStoreName(d)) name = true;
+            if (t == null) continue;
+            if (name == null && Blocklist.matchesStoreName(t)) name = t;
+            if (INSTALL_WORDS.contains(t)) action = true;
+            if (DETAILS_MARKERS.contains(t)) details = true;
         }
-        if (name && action) kick("Store page blocked", true);
+        if (name != null && action && details) {
+            Log.i(TAG, "blocked store page " + name);
+            back("Store page blocked");
+        }
     }
+
+    private static final Set<String> DETAILS_MARKERS = new HashSet<>(Arrays.asList(
+        "info. de la app", "información de la app", "acerca de esta app", "acerca de este juego",
+        "about this app", "about this game", "valoraciones y reseñas", "ratings and reviews",
+        "seguridad de los datos", "data safety", "contiene anuncios", "contains ads",
+        "compras en la aplicación", "in-app purchases", "novedades", "what's new"));
 
     private void checkSettings(List<AccessibilityNodeInfo> nodes) {
         boolean mentionsSelf = false, danger = false, hasSwitch = false;
         boolean mentionsSystemApp = false, enableButton = false;
+        String dangerWord = null;
         for (AccessibilityNodeInfo n : nodes) {
             String t = lower(n.getText());
             CharSequence cls = n.getClassName();
@@ -176,11 +215,12 @@ public class GuardService extends AccessibilityService {
             }
             if (t == null) continue;
             if (t.contains(LABEL)) mentionsSelf = true;
-            if (DANGER_WORDS.contains(t)) danger = true;
+            if (DANGER_WORDS.contains(t)) { danger = true; dangerWord = t; }
             if (ENABLE_WORDS.contains(t)) enableButton = true;
             for (String s : Blocklist.SYSTEM_APP_LABELS) if (t.equals(s)) mentionsSystemApp = true;
         }
-        if (mentionsSelf && (danger || hasSwitch) && isAdminActive()) {
+        if (mentionsSelf && danger && isAdminActive()) {
+            Log.i(TAG, "protected settings page (word=" + dangerWord + ", switch=" + hasSwitch + ")");
             kick("Focus Guard is protected", true);
         } else if (mentionsSystemApp && enableButton) {
             kick("That app stays disabled", true);
@@ -201,6 +241,19 @@ public class GuardService extends AccessibilityService {
         } else {
             performGlobalAction(GLOBAL_ACTION_HOME);
         }
+        handler.post(new Runnable() {
+            @Override public void run() {
+                Toast.makeText(GuardService.this, "Focus Guard: " + why, Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /** Back out of one page only, so you stay in the app (used for the Play Store). */
+    private void back(final String why) {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastKick < 700) return;
+        lastKick = now;
+        performGlobalAction(GLOBAL_ACTION_BACK);
         handler.post(new Runnable() {
             @Override public void run() {
                 Toast.makeText(GuardService.this, "Focus Guard: " + why, Toast.LENGTH_SHORT).show();

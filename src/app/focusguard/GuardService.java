@@ -32,12 +32,13 @@ import java.util.Set;
 public class GuardService extends AccessibilityService {
     static final String TAG = "FocusGuard";
     private static final String SELF = "app.focusguard";
-    private static final String LABEL = "focus guard";
+    /** Apps whose settings pages are protected: Focus Guard itself and the Clean Shield DNS filter. */
+    private static final String[] PROTECTED = {"focus guard", "clean shield"};
     private static final int MAX_NODES = 2500;
 
     private static final Set<String> SETTINGS_PKGS = new HashSet<>(Arrays.asList(
         "com.android.settings", "com.google.android.settings", "com.google.android.packageinstaller",
-        "com.android.packageinstaller", "com.google.android.permissioncontroller"));
+        "com.android.packageinstaller", "com.google.android.permissioncontroller", "com.android.vpndialogs"));
 
     /** Buttons that would turn Focus Guard off or remove it (Spanish + English). */
     private static final Set<String> DANGER_WORDS = new HashSet<>(Arrays.asList(
@@ -45,7 +46,14 @@ public class GuardService extends AccessibilityService {
         "desactivar", "deactivate", "desactivar esta app de administración",
         "deactivate this device admin app", "borrar almacenamiento", "clear storage",
         "borrar datos", "clear data", "inhabilitar", "disable", "usar focus guard",
-        "use focus guard", "aceptar", "ok"));
+        "use focus guard", "aceptar", "ok", "desconectar", "disconnect", "olvidar vpn", "forget vpn",
+        "olvidar", "forget"));
+
+    /** In the VPN dialog only Disconnect counts, so the VPN permission prompt (Aceptar) still works. */
+    private static final Set<String> VPN_DIALOG_DANGER = new HashSet<>(Arrays.asList(
+        "desconectar", "disconnect"));
+
+    private static final Set<String> SAVE_WORDS = new HashSet<>(Arrays.asList("guardar", "save"));
 
     private static final Set<String> ENABLE_WORDS = new HashSet<>(Arrays.asList(
         "habilitar", "enable", "activar"));
@@ -121,7 +129,7 @@ public class GuardService extends AccessibilityService {
 
         if (browser) checkBrowser(nodes);
         else if (store) checkStore(nodes);
-        else checkSettings(nodes);
+        else checkSettings(nodes, pkg);
     }
 
     private void checkBrowser(List<AccessibilityNodeInfo> nodes) {
@@ -202,7 +210,9 @@ public class GuardService extends AccessibilityService {
         "seguridad de los datos", "data safety", "contiene anuncios", "contains ads",
         "compras en la aplicación", "in-app purchases", "novedades", "what's new"));
 
-    private void checkSettings(List<AccessibilityNodeInfo> nodes) {
+    private void checkSettings(List<AccessibilityNodeInfo> nodes, String pkg) {
+        boolean vpnDialog = pkg.equals("com.android.vpndialogs");
+        boolean privateDns = false, save = false;
         boolean mentionsSelf = false, danger = false, hasSwitch = false;
         boolean mentionsSystemApp = false, enableButton = false;
         String dangerWord = null;
@@ -214,14 +224,20 @@ public class GuardService extends AccessibilityService {
                 if (c.endsWith("Switch") || c.endsWith("SwitchCompat") || c.endsWith("SwitchMaterial")) hasSwitch = true;
             }
             if (t == null) continue;
-            if (t.contains(LABEL)) mentionsSelf = true;
-            if (DANGER_WORDS.contains(t)) { danger = true; dangerWord = t; }
+            for (String l : PROTECTED) if (t.contains(l)) mentionsSelf = true;
+            if ((vpnDialog ? VPN_DIALOG_DANGER : DANGER_WORDS).contains(t)) { danger = true; dangerWord = t; }
+            if (t.contains("dns privado") || t.contains("private dns")) privateDns = true;
+            if (SAVE_WORDS.contains(t)) save = true;
             if (ENABLE_WORDS.contains(t)) enableButton = true;
             for (String s : Blocklist.SYSTEM_APP_LABELS) if (t.equals(s)) mentionsSystemApp = true;
         }
         if (mentionsSelf && danger && isAdminActive()) {
             Log.i(TAG, "protected settings page (word=" + dangerWord + ", switch=" + hasSwitch + ")");
-            kick("Focus Guard is protected", true);
+            kick("Protected by Focus Guard", true);
+        } else if (privateDns && save && isAdminActive()) {
+            // Private DNS would let lookups skip the Clean Shield filter.
+            Log.i(TAG, "protected private DNS dialog");
+            kick("Private DNS is locked", true);
         } else if (mentionsSystemApp && enableButton) {
             kick("That app stays disabled", true);
         }

@@ -13,9 +13,12 @@ Built for a Pixel 8 on Android 17, plain Java, no dependencies, no network acces
 | **Play Store** | The store works normally (home, search, **updates**, other apps). Only a blocked app's own details page is closed (one Back press), so it can't be installed or re-enabled. Ads for blocked apps on the home page are left alone. |
 | **Other browsers** | Any app that can open arbitrary web links, other than Chrome and Firefox, is treated as blocked, so installing another browser doesn't get around it. |
 | **Disabled system apps** | Blocks the "Enable" button for YouTube, YouTube Music and Google TV in Settings. |
+| **Clean Shield & Private DNS** | Backs out of Clean Shield's App info and VPN settings pages, the VPN *Desconectar* dialog, and the Private DNS dialog. |
 | **Itself** | Backs out of its own Uninstall / Force stop / Clear storage / Deactivate admin / accessibility toggle screens. There is no off switch in the app. |
 
 **Allowed on purpose:** Steam, WeChat, Strava, Movistar Plus+.
+
+**Companion app:** [Clean Shield](https://github.com/Bentipe/cleanshield) blocks ads, trackers and porn system-wide with a local DNS filter. Focus Guard also protects Clean Shield: its App info page, VPN settings and *Desconectar* button, plus Android's Private DNS setting, which could bypass the filter.
 
 The full lists are in [`Blocklist.java`](src/app/focusguard/Blocklist.java). Edit and rebuild to change them.
 
